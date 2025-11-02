@@ -1,7 +1,7 @@
 # AddTempAdminRights
 This tool provides users to elevate themselves as admins for 5 minutes through Intune's Company Portal for Windows Devices. You can specify the time in lenght yourself in the script, if you find 5 minutes being too short.
 
-⚠️ **THIS FREE PRODUCT IS PROVIDED “AS IS”, WITHOUT ANY WARRANTIES, GUARANTEES, OR RIGHTS TO CLAIM OR COMPENSATION. PLEASE UNDERSTAND THAT FREE SECURITY TOOLS AND SOLUTIONS ARE FAR FROM THE BEST.** ⚠️
+⚠️ **THIS FREE PRODUCT IS PROVIDED “AS IS”, WITHOUT ANY WARRANTIES, GUARANTEES, OR RIGHTS TO CLAIM OR COMPENSATION. PLEASE UNDERSTAND THAT FREE SECURITY TOOLS ARE FAR FROM THE BEST SOLUTIONS.** ⚠️
 
 # Features
 - Uses Intune Win32 app package detection method to flag the status of admin rights been added. Detection file is also removed in 5 minutes together with previleges.
