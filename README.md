@@ -10,8 +10,14 @@ This tool provides users to elevate themselves as admins for 5 minutes through I
 
 
 # Instructions
-- Detection file is: C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\AddTempAdminRights.flag
-- Command line for installation is: %WINDIR%\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File "AddTempAdminRights_v1.1.ps1"
+Detection file is  
+```
+C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\AddTempAdminRights.flag
+```
+Command line for installation is  
+```
+%WINDIR%\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File "AddTempAdminRights_v1.1.ps1"
+```
 
 # Additional considerations
 Add Account Protection Policy or Remediation Script in Intune to remove any local admin rights. Because with this tool, user will be capable to add side-by-side permanent local admin account.
