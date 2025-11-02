@@ -1,0 +1,1 @@
+%WINDIR%\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File "AddTempAdminRights_v1.1.ps1"
