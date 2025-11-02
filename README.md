@@ -7,8 +7,8 @@ This tool provides users to elevate themselves as admins for 5 minutes through I
 - Scheduled Task is hidden inside the node hierarcy that advanced user will not find the task to make his/her rights permanent
 
 # Instructions
-Detection file is: C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\AddTempAdminRights.flag
-Command line for installation is: %WINDIR%\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File "AddTempAdminRights_v1.1.ps1"
+- Detection file is: C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\AddTempAdminRights.flag
+- Command line for installation is: %WINDIR%\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File "AddTempAdminRights_v1.1.ps1"
 
 # Additional considerations
 Add Account Protection Policy or Remediation Script in Intune to remove any local admin rights. Because with this tool only, user will still be capable to add side-by-side local admin account.
