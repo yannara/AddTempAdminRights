@@ -1,5 +1,5 @@
 # AddTempAdminRights
-This tool provides users to elevate themselves as admins for 5 minutes through Intune's Company Portal for Windows Devices. You can specify the time in lenght yourself in the script, if you find 5 minutes be too short. 
+This tool provides users to elevate themselves as admins for 5 minutes through Intune's Company Portal for Windows Devices. You can specify the time in lenght yourself in the script, if you find 5 minutes being too short. 
 
 # Features
 - Uses Intune Win32 app package detection method to flag the status of admin rights been added. Detection file is also removed in 5 minutes together with previleges.
@@ -14,7 +14,7 @@ This tool provides users to elevate themselves as admins for 5 minutes through I
 - Command line for installation is: %WINDIR%\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File "AddTempAdminRights_v1.1.ps1"
 
 # Additional considerations
-Add Account Protection Policy or Remediation Script in Intune to remove any local admin rights. Because with this tool only, user will still be capable to add side-by-side local admin account.
+Add Account Protection Policy or Remediation Script in Intune to remove any local admin rights. Because with this tool, user will be capable to add side-by-side permanent local admin account.
 
 # Known issues
 - User will not be additionally prompted when rights are added. Only Company Portal installation status will appear. Make sure you write good instruction to application notes how it supposed to be used.
