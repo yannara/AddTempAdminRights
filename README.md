@@ -6,6 +6,9 @@ This tool provides users to elevate themselves as admins for 5 minutes through I
 - Logs activity in Event Viewe Application - node. Two log event will hapen - rights added and rights removed.
 - Scheduled Task is hidden inside the node hierarcy that advanced user will not find the task to make his/her rights permanent
 
+  <img width="484" height="174" alt="image" src="https://github.com/user-attachments/assets/5cebf801-2f2b-42d1-af35-fff28414bc11" />
+
+
 # Instructions
 - Detection file is: C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\AddTempAdminRights.flag
 - Command line for installation is: %WINDIR%\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File "AddTempAdminRights_v1.1.ps1"
@@ -16,3 +19,5 @@ Add Account Protection Policy or Remediation Script in Intune to remove any loca
 # Known issues
 - User will not be additionally prompted when rights are added. Only Company Portal installation status will appear. Make sure you write good instruction to application notes how it supposed to be used.
 - Some times Company Portal still shows "installed" status after rights are removed. This is due to Intune mdm policies not being updated yet. Users should still be capable of re-installing the app from CP 
+
+<img width="1061" height="754" alt="image" src="https://github.com/user-attachments/assets/7fc5bca5-c579-4531-9f1a-144c2f75c486" />
