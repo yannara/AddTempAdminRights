@@ -3,6 +3,11 @@ This tool provides users to elevate themselves as admins for 5 minutes through I
 
 ⚠️ **THIS FREE PRODUCT IS PROVIDED “AS IS”, WITHOUT ANY WARRANTIES, GUARANTEES, OR RIGHTS TO CLAIM OR COMPENSATION. PLEASE UNDERSTAND THAT FREE SECURITY TOOLS ARE FAR FROM THE BEST SOLUTIONS.** ⚠️
 
+# Change History
+02.11.2025	Published final first version of the script.
+
+03.12.2025	Updated the script to use SID admin group instead of local admin group. This will make use possible for any Windows language.
+
 # Features
 - Uses Intune Win32 app package detection method to flag the status of admin rights been added. Detection file is also removed in 5 minutes together with previleges.
 - Logs activity in Event Viewer Application - node. Two log event will hapen - rights added and rights removed.
