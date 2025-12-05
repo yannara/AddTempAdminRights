@@ -5,6 +5,7 @@
 # - Resolves the localized name of the Administrators group from the well-known SID S-1-5-32-544 for language independence.
 # - Writes key events to the Application log (grant: EventId 1005, removal verified: EventId 1006) and detailed logs to C:\ProgramData\Microsoft\Windows\Temp\Scan.log.
 # - Schedules hidden removal and retry tasks under \Microsoft\Windows\Chkdsk.
+# - Schedules additional removal triggers: on user logoff (event-based) and on system startup (ensures clean state after reboot).
 # - Important: Existing processes keep their admin token until sign-out; removal prevents NEW elevations.
 
 # Configuration:
@@ -15,6 +16,8 @@
 # TaskName           = "Scan"
 # TaskPath           = "\Microsoft\Windows\Chkdsk"
 # RetryTaskName      = "Scan_Retry"
+# LogoffTaskName     = "Scan_Logoff"
+# StartupTaskName    = "Scan_Startup"
 # AdminGroupSID      = "S-1-5-32-544"
 # IntuneFlag         = "C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\AddTempAdminRights.flag"
 # LogFile            = Join-Path $WorkFolder "Scan.log"
@@ -41,6 +44,10 @@ $CleanupScript      = "CleanupScan.ps1"
 $TaskName           = "Scan"
 $TaskPath           = "\Microsoft\Windows\Chkdsk"
 $RetryTaskName      = "Scan_Retry"
+$LogoffTaskName     = "Scan_Logoff"
+$StartupTaskName    = "Scan_Startup"
+$LogoffScript       = "LogoffRemove.ps1"
+$StartupScript      = "StartupRemove.ps1"
 $AdminGroupSID      = "S-1-5-32-544"
 $IntuneFlag         = "C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\AddTempAdminRights.flag"
 $LogFile            = Join-Path $WorkFolder "Scan.log"
@@ -345,6 +352,186 @@ $scanTemplate = $scanTemplate.Replace('__RETRY_TASK_NAME__', $RetryTaskName)
 $scanTemplate | Out-File -FilePath $ScanScriptPath -Encoding UTF8 -Force
 Write-Log "Created $ScanScriptPath"
 
+# --- Build logoff removal script (LogoffRemove.ps1) ---
+$LogoffScriptPath = Join-Path $WorkFolder $LogoffScript
+$logoffTemplate = @'
+# Relaunch in 64-bit PowerShell if currently in 32-bit
+if (-not [Environment]::Is64BitProcess) {
+    $ps64 = "$env:WINDIR\SysNative\WindowsPowerShell\v1.0\powershell.exe"
+    if (Test-Path $ps64) {
+        & $ps64 -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath @args
+        exit $LASTEXITCODE
+    }
+}
+
+# LogoffRemove.ps1 - removal on user logoff
+$EventSource      = '__EVENT_SOURCE__'
+$LogFile          = '__LOG_FILE__'
+$IntuneFlag       = '__INTUNE_FLAG__'
+$AdminGroupSID    = '__ADMIN_SID__'
+$currentUser      = '__CURRENT_USER__'
+$AdminsGroupName  = (New-Object System.Security.Principal.SecurityIdentifier $AdminGroupSID).Translate([System.Security.Principal.NTAccount]).Value -replace '^[^\\]+\\',''
+
+function Get-AppEventSource {
+    param([string]$Preferred)
+    try {
+        if ($Preferred -and [System.Diagnostics.EventLog]::SourceExists($Preferred)) { return $Preferred }
+        $candidates = @('EventLog','MsiInstaller','Application Error','Windows Error Reporting','Windows PowerShell')
+        foreach ($s in $candidates) { if ([System.Diagnostics.EventLog]::SourceExists($s)) { return $s } }
+    } catch {}
+    return $null
+}
+
+function Write-Log {
+    param([string]$Message,[ValidateSet('Information','Warning','Error')] [string]$Type='Information',[int]$EventId=1006,[bool]$EV=$true)
+    $ts = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    "$ts [$Type] $Message" | Out-File -FilePath $LogFile -Append -Encoding UTF8
+    if ($EV) {
+        try {
+            if (-not [System.Diagnostics.EventLog]::SourceExists($EventSource)) {
+                New-EventLog -LogName Application -Source $EventSource
+            }
+        } catch {}
+        $src = Get-AppEventSource -Preferred $EventSource
+        if ($null -ne $src) {
+            try { Write-EventLog -LogName Application -Source $src -EventId $EventId -EntryType $Type -Message $Message } catch {}
+        }
+    }
+}
+
+Write-Log "=== Logoff removal start ===" "Information" 1006 $false
+
+function Test-Membership {
+    (Get-LocalGroupMember -Group $AdminsGroupName -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq $currentUser }) -ne $null
+}
+
+$isMember = Test-Membership
+if (-not $isMember) {
+    Write-Log "User $currentUser not in $AdminsGroupName, no removal needed (logoff trigger)." "Information" 1006 $false
+    exit 0
+}
+
+try {
+    net localgroup "$AdminsGroupName" "$currentUser" /delete | Out-Null
+    $removed = -not (Test-Membership)
+    if (-not $removed) {
+        Remove-LocalGroupMember -Group $AdminsGroupName -Member $currentUser -ErrorAction SilentlyContinue
+        $removed = -not (Test-Membership)
+    }
+    if ($removed) {
+        Write-Log "Temporary admin rights removed from $currentUser on logoff (verified)." "Information" 1006 $true
+    } else {
+        Write-Log "WARNING: User still in $AdminsGroupName after logoff removal attempts." "Warning" 1010 $true
+    }
+} catch {
+    Write-Log "ERROR: Exception during logoff removal: $($_.Exception.Message)" "Error" 1006 $true
+}
+
+# Clean up Intune flag
+try { if (Test-Path $IntuneFlag) { Remove-Item -Force $IntuneFlag } } catch {}
+
+Write-Log "=== Logoff removal end ===" "Information" 1006 $false
+'@
+
+$logoffTemplate = $logoffTemplate.Replace('__EVENT_SOURCE__', $EventSource)
+$logoffTemplate = $logoffTemplate.Replace('__LOG_FILE__', $LogFile)
+$logoffTemplate = $logoffTemplate.Replace('__INTUNE_FLAG__', $IntuneFlag)
+$logoffTemplate = $logoffTemplate.Replace('__ADMIN_SID__', $AdminGroupSID)
+$logoffTemplate = $logoffTemplate.Replace('__CURRENT_USER__', $currentUser)
+
+$logoffTemplate | Out-File -FilePath $LogoffScriptPath -Encoding UTF8 -Force
+Write-Log "Created $LogoffScriptPath"
+
+# --- Build startup removal script (StartupRemove.ps1) ---
+$StartupScriptPath = Join-Path $WorkFolder $StartupScript
+$startupTemplate = @'
+# Relaunch in 64-bit PowerShell if currently in 32-bit
+if (-not [Environment]::Is64BitProcess) {
+    $ps64 = "$env:WINDIR\SysNative\WindowsPowerShell\v1.0\powershell.exe"
+    if (Test-Path $ps64) {
+        & $ps64 -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath @args
+        exit $LASTEXITCODE
+    }
+}
+
+# StartupRemove.ps1 - removal on system startup
+$EventSource      = '__EVENT_SOURCE__'
+$LogFile          = '__LOG_FILE__'
+$IntuneFlag       = '__INTUNE_FLAG__'
+$AdminGroupSID    = '__ADMIN_SID__'
+$currentUser      = '__CURRENT_USER__'
+$AdminsGroupName  = (New-Object System.Security.Principal.SecurityIdentifier $AdminGroupSID).Translate([System.Security.Principal.NTAccount]).Value -replace '^[^\\]+\\',''
+
+function Get-AppEventSource {
+    param([string]$Preferred)
+    try {
+        if ($Preferred -and [System.Diagnostics.EventLog]::SourceExists($Preferred)) { return $Preferred }
+        $candidates = @('EventLog','MsiInstaller','Application Error','Windows Error Reporting','Windows PowerShell')
+        foreach ($s in $candidates) { if ([System.Diagnostics.EventLog]::SourceExists($s)) { return $s } }
+    } catch {}
+    return $null
+}
+
+function Write-Log {
+    param([string]$Message,[ValidateSet('Information','Warning','Error')] [string]$Type='Information',[int]$EventId=1006,[bool]$EV=$true)
+    $ts = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    "$ts [$Type] $Message" | Out-File -FilePath $LogFile -Append -Encoding UTF8
+    if ($EV) {
+        try {
+            if (-not [System.Diagnostics.EventLog]::SourceExists($EventSource)) {
+                New-EventLog -LogName Application -Source $EventSource
+            }
+        } catch {}
+        $src = Get-AppEventSource -Preferred $EventSource
+        if ($null -ne $src) {
+            try { Write-EventLog -LogName Application -Source $src -EventId $EventId -EntryType $Type -Message $Message } catch {}
+        }
+    }
+}
+
+Write-Log "=== Startup removal start ===" "Information" 1006 $false
+
+function Test-Membership {
+    (Get-LocalGroupMember -Group $AdminsGroupName -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq $currentUser }) -ne $null
+}
+
+$isMember = Test-Membership
+if (-not $isMember) {
+    Write-Log "User $currentUser not in $AdminsGroupName, no removal needed (startup trigger)." "Information" 1006 $false
+    exit 0
+}
+
+try {
+    net localgroup "$AdminsGroupName" "$currentUser" /delete | Out-Null
+    $removed = -not (Test-Membership)
+    if (-not $removed) {
+        Remove-LocalGroupMember -Group $AdminsGroupName -Member $currentUser -ErrorAction SilentlyContinue
+        $removed = -not (Test-Membership)
+    }
+    if ($removed) {
+        Write-Log "Temporary admin rights removed from $currentUser on startup (verified)." "Information" 1006 $true
+    } else {
+        Write-Log "WARNING: User still in $AdminsGroupName after startup removal attempts." "Warning" 1010 $true
+    }
+} catch {
+    Write-Log "ERROR: Exception during startup removal: $($_.Exception.Message)" "Error" 1006 $true
+}
+
+# Clean up Intune flag
+try { if (Test-Path $IntuneFlag) { Remove-Item -Force $IntuneFlag } } catch {}
+
+Write-Log "=== Startup removal end ===" "Information" 1006 $false
+'@
+
+$startupTemplate = $startupTemplate.Replace('__EVENT_SOURCE__', $EventSource)
+$startupTemplate = $startupTemplate.Replace('__LOG_FILE__', $LogFile)
+$startupTemplate = $startupTemplate.Replace('__INTUNE_FLAG__', $IntuneFlag)
+$startupTemplate = $startupTemplate.Replace('__ADMIN_SID__', $AdminGroupSID)
+$startupTemplate = $startupTemplate.Replace('__CURRENT_USER__', $currentUser)
+
+$startupTemplate | Out-File -FilePath $StartupScriptPath -Encoding UTF8 -Force
+Write-Log "Created $StartupScriptPath"
+
 # --- Cleanup script ---
 $CleanupScriptPath = Join-Path $WorkFolder $CleanupScript
 @'
@@ -385,6 +572,86 @@ try {
     Write-Log "Scheduled removal task '$TaskName' under '$TaskPath'. Next run: $($startAt.ToString('yyyy-MM-dd HH:mm:ss'))." "Information" 1005 $false
 } catch {
     Write-Log "ERROR: Failed to schedule removal task: $($_.Exception.Message)" "Error" 1005 $true
+}
+
+# --- Schedule logoff trigger task (using COM object for event-based trigger) ---
+try {
+    $svc = New-Object -ComObject Schedule.Service
+    $svc.Connect()
+
+    # Get or create the task folder
+    try {
+        $folder = $svc.GetFolder($TaskPath)
+    } catch {
+        $rootFolder = $svc.GetFolder("\")
+        $folder = $rootFolder.CreateFolder($TaskPath.TrimStart("\"))
+    }
+
+    # Create task definition
+    $taskDef = $svc.NewTask(0)
+    $taskDef.RegistrationInfo.Description = "Remove temporary admin rights on user logoff"
+    $taskDef.Settings.Enabled = $true
+    $taskDef.Settings.Hidden = $true
+    $taskDef.Settings.AllowDemandStart = $true
+    $taskDef.Settings.StartWhenAvailable = $true
+    $taskDef.Settings.DisallowStartIfOnBatteries = $false
+    $taskDef.Settings.StopIfGoingOnBatteries = $false
+
+    # Event trigger for logoff (Security log, Event ID 4634 for logoff, or use System log Event ID 7002 for user logoff notification)
+    # Using Microsoft-Windows-Winlogon/Operational with event ID 7002 (user logoff notification)
+    $trigger = $taskDef.Triggers.Create(0)  # 0 = TASK_TRIGGER_EVENT
+    $trigger.Enabled = $true
+    # Event subscription for logoff - using System log's User32 source with EventID 1074 or Winlogon
+    # More reliable: use Microsoft-Windows-Security-Auditing for logoff events
+    $trigger.Subscription = @"
+<QueryList>
+  <Query Id="0" Path="System">
+    <Select Path="System">*[System[Provider[@Name='Microsoft-Windows-Winlogon'] and (EventID=7002)]]</Select>
+  </Query>
+</QueryList>
+"@
+
+    # Action
+    $action = $taskDef.Actions.Create(0)  # 0 = TASK_ACTION_EXEC
+    $action.Path = $PowerShellExe
+    $action.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$LogoffScriptPath`""
+
+    # Principal (run as SYSTEM with highest privileges)
+    $taskDef.Principal.UserId = "S-1-5-18"  # SYSTEM SID
+    $taskDef.Principal.RunLevel = 1  # 1 = TASK_RUNLEVEL_HIGHEST
+
+    # Register the task (6 = TASK_CREATE_OR_UPDATE)
+    $folder.RegisterTaskDefinition($LogoffTaskName, $taskDef, 6, $null, $null, 5) | Out-Null  # 5 = TASK_LOGON_SERVICE_ACCOUNT
+
+    Write-Log "Scheduled logoff removal task '$LogoffTaskName' under '$TaskPath'." "Information" 1005 $false
+} catch {
+    Write-Log "WARNING: Failed to schedule logoff trigger task: $($_.Exception.Message)" "Warning" 1010 $false
+}
+
+# --- Schedule startup trigger task ---
+try {
+    $startupAction   = New-ScheduledTaskAction -Execute $PowerShellExe -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$StartupScriptPath`""
+    $startupTrigger  = New-ScheduledTaskTrigger -AtStartup
+    $startupPrincipal= New-ScheduledTaskPrincipal -UserId "SYSTEM" -RunLevel Highest
+    $startupSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -Compatibility Win8 -AllowStartIfOnBatteries
+    $startupTask     = New-ScheduledTask -Action $startupAction -Principal $startupPrincipal -Trigger $startupTrigger -Settings $startupSettings
+
+    Register-ScheduledTask -TaskName $StartupTaskName -TaskPath $TaskPath -InputObject $startupTask -Force | Out-Null
+
+    # Hide the startup task (best-effort)
+    try {
+        $startupTaskObj = Get-ScheduledTask -TaskPath $TaskPath -TaskName $StartupTaskName -ErrorAction Stop
+        if ($startupTaskObj) {
+            $startupTaskObj.Settings.Hidden = $true
+            Set-ScheduledTask -InputObject $startupTaskObj | Out-Null
+        }
+    } catch {
+        Write-Log "WARNING: Could not set startup task hidden flag: $($_.Exception.Message)"
+    }
+
+    Write-Log "Scheduled startup removal task '$StartupTaskName' under '$TaskPath'." "Information" 1005 $false
+} catch {
+    Write-Log "WARNING: Failed to schedule startup trigger task: $($_.Exception.Message)" "Warning" 1010 $false
 }
 
 # --- User notification (best-effort) ---
