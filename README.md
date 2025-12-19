@@ -35,8 +35,6 @@ Add Account Protection Policy or Remediation Script in Intune to remove any loca
 - User will not be additionally prompted when rights are added. Only Company Portal installation status will appear. Make sure you write good instruction to application notes how it supposed to be used.
 - Some times Company Portal still shows "installed" status after rights are removed. This is due to Intune mdm policies not being updated yet. Users should still be capable of re-installing the app from CP 
 
-<img width="600" height="400" alt="image" src="https://github.com/user-attachments/assets/7fc5bca5-c579-4531-9f1a-144c2f75c486" />
-
 
 
 
